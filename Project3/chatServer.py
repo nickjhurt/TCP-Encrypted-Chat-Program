@@ -170,7 +170,6 @@ class ChatServer(object):
 		running = 1
 		while running:
 			try:
-				print(self.inputs)
 				inputready,outputready,exceptready = select.select(self.inputs, self.outputs, [])
 			except select.error as e:
 				traceback.print_exc()
