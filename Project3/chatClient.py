@@ -6,6 +6,10 @@ Developers:  Nick Hurt, Keith Schmitt, Jerry ---
 
 import sys, socket, select, re
 
+#need to pip install this
+#client needs to randomly generate an initialization vector each time it sends a message 
+import rsa
+
 BUFSIZ = 1024
 
 class ChatClient(object):
@@ -19,13 +23,13 @@ class ChatClient(object):
 		try:
 			self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			self.sock.connect((host, self.port))
-			print('Welcome to The Office fanatics chatroom.')
-			self.sock.send('NAME: ' + self.name) 
+			print(('Welcome to The Office fanatics chatroom.'))
+			self.sock.send('NAME: ' + self.name)
 			data = self.sock.recv(BUFSIZ)
 			addr = data.split('CLIENT: ')[1] #get client address and set it
 			self.prompt = '[{}]> '.format(name)
-		except socket.error, e:
-			print 'Uh oh...something went wrong connecting to chat server'
+		except socket.error:
+			print( 'Uh oh...something went wrong connecting to chat server')
 			sys.exit(1)
 
 	def cmdloop(self):
@@ -37,7 +41,7 @@ class ChatClient(object):
 
 				# Wait for input from stdin & socket
 				inputready, outputready,exceptrdy = select.select([0, self.sock], [],[])
-				
+
 				for i in inputready:
 					if i == 0:
 						data = sys.stdin.readline().strip()
@@ -45,19 +49,19 @@ class ChatClient(object):
 					elif i == self.sock:
 						data = self.sock.recv(BUFSIZ)
 						if data == 'Shutdown':
-							print 'Admin booted you from chat.'
+							print( 'Admin booted you from chat.')
 							self.flag = True
 							break
 						if not data:
-							print 'Shutting down.'
+							print( 'Shutting down.')
 							self.flag = True
 							break
 						else:
 							sys.stdout.write(data + '\n')
 							sys.stdout.flush()
-							
+
 			except KeyboardInterrupt:
-				print '...received interrupt.\nCome again soon!'
+				print( '...received interrupt.\nCome again soon!')
 				self.sock.close()
 				break
 
@@ -71,7 +75,7 @@ def is_valid_hostname(hostname):
 		hostname = hostname[:-1]
 	allowed = re.compile("(?!-)[A-Z\d-]{1,63}(?<!-)$", re.IGNORECASE)
 	return all(allowed.match(x) for x in hostname.split("."))
-	
+
 def getHostAndPort(argsFromCommandLine):
 
 	# either enter host/port by command line or user input
@@ -82,21 +86,21 @@ def getHostAndPort(argsFromCommandLine):
 
 	else:
 
-		username = raw_input("username: ")
+		username = input("username: ")
 
-		host = raw_input('host: ')
+		host = input('host: ')
 
 		# use regular expression function
 		while not is_valid_hostname(host):
-			print "Invalid host, try again."
-			host = raw_input('host: ')
+			print( "Invalid host, try again.")
+			host = input('host: ')
 
-		port = raw_input('port: ')
+		port = input('port: ')
 
 		# check for non-characters and negative or large port numbers
 		while not port.isdigit() or int(port) < 0 or int(port) > 65536:
-			print "Invalid Port Number, try again."
-			port = raw_input('port: ')
+			print( "Invalid Port Number, try again.")
+			port = input('port: ')
 
 		# cast port only when know it's valid
 		port = int(port)
