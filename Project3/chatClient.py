@@ -3,8 +3,9 @@
 '''
 Developers:  Nick Hurt, Keith Schmitt, Jerry ---
 '''
-
-import sys, socket, select, re
+#from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+#from cryptography.hazmat.backends import default_backend
+import sys, socket, select, os, re
 
 BUFSIZ = 1024
 
@@ -107,6 +108,25 @@ def main(argv):
 
 	host, port, username = getHostAndPort(argv)
 	c = ChatClient(host, port, username)
+
+	#read the pubilc and private key from file
+	file1 = open("RSApub.pem", "r")
+	publicKey = file1.read()
+	file1.close()
+	print("Import the Public Key")
+
+	file2 = open("RSApriv.pem", "r")
+	privateKey = file2.read()
+	file2.close()
+	print("Import the Private Key")
+
+	print("Generate a random  Symmetric Key")
+	symmetricKey = os.urandom(32)
+	iv = os.urandom(16)
+
+	cipher = Cipher(algorithms.ASE(key), modes.CBC(iv), backend = backend)
+	
+	
 	c.cmdloop()
 
 if __name__ == "__main__":

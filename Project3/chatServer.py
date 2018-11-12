@@ -1,8 +1,12 @@
 #!/usr/bin/python
 
 '''
-Developers:  Nick Hurt, Keith Schmitt, Jerry ---
+Developers:  Nick Hurt, Keith Schmitt, Runquan Ye ---
 '''
+
+from Crypto.PublicKey import RSA
+from Crypto.Cipher import PKCS1_v1_5 as cipher
+from base64 import b64decode, b64encode
 
 import select
 import socket
@@ -248,7 +252,18 @@ def main(argv):
 	port = getPort(argv)
 
 	s = ChatServer(port)
-	
+
+	#read the pubilc and private key from file
+	file1 = open("RSApub.pem", "r")
+	publicKey = file1.read()
+	file1.close()
+	print("Import the Public Key")
+
+	file2 = open("RSApriv.pem", "r")
+	privateKey = file2.read()
+	file2.close()
+	print("Import the Private Key")
+
 	s.serve()
 
 if __name__ == "__main__":
