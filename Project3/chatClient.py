@@ -3,10 +3,9 @@
 '''
 Developers:  Nick Hurt, Keith Schmitt, Jerry ---
 '''
-#from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
-#from cryptography.hazmat.backends import default_backend
 import sys, socket, select, os, re
-
+from Crypto.PublicKey import RSA as pubRSA
+from Crypto.Cipher import PKCS1_OAEP
 BUFSIZ = 1024
 
 class ChatClient(object):
@@ -113,7 +112,10 @@ def main(argv):
 	file1 = open("RSApub.pem", "r")
 	publicKey = file1.read()
 	file1.close()
+	rsa_pk = pubRSA.importKey(publicKey)
+	rsa_pk = PKCS1_OAEP.new(rsa_pk)
 	print("Import the Public Key")
+
 
 	file2 = open("RSApriv.pem", "r")
 	privateKey = file2.read()
