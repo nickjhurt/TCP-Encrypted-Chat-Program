@@ -1,0 +1,27 @@
+c1 connects
+c1 creates symmetric key ks1
+c1 encryptes symmetric key using public key
+c1 sends encrypted symmetric key using pub key
+uses private key to decrypt ks1d(e(k1))->ks1
+
+
+//c library function that fills an array of 32 characters to use as a key-> making the ks (symmetric, creates symmetric key)
+RAND_bytes(key,32);
+
+//put cipher text into encrypted key, not a standard library function must be implemented (c1 encrypts symmetric key using pub key)
+rsa_encrypt(key, 32, pubkey, encrypted_key);
+
+//doing the server's job of decrypted key
+rsa_decrypt(encrypted_key, encrypted_key_len privatekey, decrypted_key);
+
+//wrapper function of library function
+//@return length fo ciphertext
+ciphertext_len = encrypt(plain_text (the message), length(length of what we want to encrypte), key (using the symmetric key), iv(initialization vector), ciphertext(output buffer));
+
+//iv give randomness, decryption using same initialization vector 
+RAND_pseudo_bytes: generate iv 
+//generate a new initialization vector for each message you encrpyt, otherwise you don't get randomness 
+
+//decrypt message, send the message, and then send the same iv, used for decryption. No need to keep iv secret 
+
+

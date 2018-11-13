@@ -11,20 +11,34 @@ import traceback
 import signal
 
 #need to pip install this
-#Server will use this to read private and public keys
+#Server will use this to read private and public keys, and encrypt data
 import cryptography
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.ciphers import (
+    Cipher, algorithms, modes
+)
+
 
 BUFSIZ = 1024
 
+"""
+main class that will handle the logic of the server, will rely on the
+files RSApub.pem and RSApriv.pem in order to create a symmetric pair with The
+generated client keys
+"""
 class ChatServer(object):
 	def __init__(self, port=1234, backlog=5):
 		self.port = port
 		self.clients = 0
 		self.clientmap = {}
 		self.groupmap = {}
+		self.getPublicKey()
+		self.getPrivateKey()
 		self.outputs = []
 		self.inputs = []
 		self.adminPassword = 'votetoday'
@@ -48,11 +62,18 @@ class ChatServer(object):
 		with open(file, "rb") as keyfile:
 			self.public_key = serialization.load_pem_public_key(keyfile.read(), backend = default_backend())
 
-
-
 	def getPrivateKey(self, file = "RSApriv.pem"):
 		with open(file, "rb") as keyfile:
 			self.private_key = serialization.load_pem_private_key(keyfile.read(), password = None, backend = default_backend())
+
+	def encrypt(self,data, key):
+		encrypted = key.encrypt(data, padding=padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA1()),algorithm=hashes.SHA1(),label=None ) )
+		return encrypted
+
+
+	def decrypt(self, ciphertext, key):
+		decrypted_message = key.decrypt(ciphertext, padding.OAEP(mgf=padding.MGF1(algorithm = hashes.SHA1()),algorithm=hashes.SHA1(), label = None))
+		return decrypted_message
 
 	def getHelp(self, client):
 		helpCmd = '''
@@ -67,7 +88,7 @@ class ChatServer(object):
 
 		for o in self.outputs:
 			if o == client:
-				o.send(helpCmd)
+				o.send(self.clientmap[o][2].encrypt(helpCmd.encode()))
 
 	def getListOfUsers(self, client):
 		users = []
@@ -77,7 +98,7 @@ class ChatServer(object):
 		listOfUsers = 'Online Users ' + str(users)
 		for o in self.outputs:
 			if o == client:
-				o.send(listOfUsers)
+				o.send(self.clientmap[o][2].encrypt(listOfUsers.encode()))
 
 	def sendMessageToAll(self, client, arguments):
 		for o in self.outputs:
@@ -86,15 +107,17 @@ class ChatServer(object):
 				for arg in arguments:
 					msg += (arg + ' ')
 				p = '{}: '.format(self.getname(client))
-				o.send(p + msg)
+				o.send(self.clientmap[o][2].encrypt((p + msg).encode()))
 
 	def sendMessage(self, client, arguments):
 		if len(arguments) < 2:
 			e = 'To send a message you need two arguments. A user, and a message'
 			self.errorMessage(client, '', e)
 			return
+		#otherwise see who its for
 		for key in self.clientmap:
 			user = self.clientmap[key][1]
+			#arguments[0] is the user
 			if user == arguments[0]:
 				msg = ''
 				for arg in range(1, len(arguments)):
@@ -102,7 +125,7 @@ class ChatServer(object):
 				for o in self.outputs:
 					if o == key:
 						p = '{}: '.format(self.getname(client))
-						o.send(p + msg)
+						o.send(self.clientmap[o][2].encrypt((p + msg).encode()))
 						return
 		e = 'User {} is not connected.'.format(arguments[0])
 		self.errorMessage(client, '', e)
@@ -125,7 +148,7 @@ class ChatServer(object):
 			if usr == arguments[0]:
 				for o in self.outputs:
 					if o == key:
-						o.send('Shutdown')
+						o.send(self.clientmap[o][2].encrypt(('Shutdown').encode()))
 						self.inputs.remove(o)
 						self.outputs.remove(o)
 						self.clientmap.pop(key)
@@ -139,7 +162,7 @@ class ChatServer(object):
 			error = errorMsg
 		for o in self.outputs:
 			if o == client:
-				o.send(error)
+				o.send(self.clientmap[o][2].encrypt(error.encode()))
 
 	def isUserOnline(self, userName):
 		for key in self.clientmap:
@@ -172,9 +195,12 @@ class ChatServer(object):
 			try:
 				inputready,outputready,exceptready = select.select(self.inputs, self.outputs, [])
 			except select.error as e:
+				print("PRINTING STACKTRACE")
 				traceback.print_exc()
 				break
 			except socket.error as e:
+				print("PRINTING STACKTRACE")
+				traceback.print_exc()
 				break
 
 			for s in inputready:
@@ -182,26 +208,41 @@ class ChatServer(object):
 				if s == self.server:
 					# handle the server socket
 					client, address = self.server.accept()
-					#print 'chatserver: got connection {} from {}'.format(client.fileno(), address)
-					print ('Connected new user from {}'.format(address))
-					# Read the login name
-					cname = client.recv(BUFSIZ).split('NAME: ')[1]
 
+					print ('Connected new user from {}'.format(address))
+					#encrypt key with private key
+					tmp_key = client.recv(BUFSIZ)
+					print(tmp_key)
+
+					#decrypt into public key
+					self.sym_key = self.decrypt(tmp_key, self.private_key)
+
+
+					tmp_fern = Fernet(self.sym_key)
+					print(self.sym_key)
+
+					#send encrypted key
+					client.send(tmp_fern.encrypt(self.sym_key))
+
+
+					# Read the login name
+					cname = tmp_fern.decrypt(client.recv(BUFSIZ)).decode().split('NAME: ')[1]
 
 
 					# Compute client name and send back
 					self.clients += 1
-					client.send('CLIENT: ' + str(address[0]))
+					client.send(tmp_fern.encrypt(('CLIENT: ' + str(address[0])).encode()))
 					self.inputs.append(client)
 
-					self.clientmap[client] = (address, cname)
+					#add tmp_fern to clientmap
+					self.clientmap[client] = (address, cname, tmp_fern)
 					# Send joining information to other clients
 					msg = 'Connected a new client'
 					for o in self.outputs:
-						o.send(msg)
+						#2-> will give the fernet object, so we are using the right one
+						o.send(self.clientmap[o][2].encrypt(msg.encode()))
 
 					self.outputs.append(client)
-
 
 				elif s == sys.stdin:
 					# handle standard input
@@ -210,7 +251,10 @@ class ChatServer(object):
 				else:
 					# handle all other sockets
 					try:
-						data = s.recv(BUFSIZ)
+						raw_data = s.recv(BUFSIZ)
+						data = self.clientmap[s][2].decrypt(raw_data).decode()
+						print("raw_data from client: " ,raw_data)
+						print("Decrypted with sym key: ", data)
 						if data:
 							self.handleClientData(data, s)
 						else:
@@ -229,14 +273,14 @@ class ChatServer(object):
 							self.clientmap.pop(s)
 							for o in self.outputs:
 								# o.send(msg)
-								o.send(msg)
+								o.send(self.clientmap[o][2].ecnrypt(msg.encode()))
 
 					except socket.error as e:
 						# Remove
 						self.inputs.remove(s)
 						self.outputs.remove(s)
 
-			self.server.close()
+		self.server.close()
 
 '''
 getPort is a helper method for error handling of raw input for port nums
@@ -263,8 +307,6 @@ def main(argv):
 
 	port = getPort(argv)
 	s = ChatServer(port)
-	s.getPublicKey()
-	s.getPrivateKey()
 
 
 	s.serve()

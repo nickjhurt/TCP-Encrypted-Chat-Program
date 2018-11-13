@@ -4,14 +4,27 @@
 Developers:  Nick Hurt, Keith Schmitt, Jerry ---
 '''
 
-import sys, socket, select, re
+import sys, socket, select, re, os
 
-#need to pip install this
-#client needs to randomly generate an initialization vector each time it sends a message 
-import rsa
+#need to pip install this: pip install cryptography
+import cryptography
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes
+from cryptography.fernet import Fernet
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives.ciphers import (
+    Cipher, algorithms, modes
+)
 
 BUFSIZ = 1024
+"""
+main class aiming to handle the client side interactions,
+when first instantiated, it will do a setup routine with the Server
+in order to create a symmetric key that it generates
 
+"""
 class ChatClient(object):
 
 	def __init__(self, host='127.0.0.1', port=1234, name=None):
@@ -20,17 +33,51 @@ class ChatClient(object):
 		self.port = int(port)
 		self.host = host
 		self.prompt='[{}]> '.format(name)
+
+		#loading public key
+		self.getPublicKey()
+
+
 		try:
 			self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 			self.sock.connect((host, self.port))
 			print(('Welcome to The Office fanatics chatroom.'))
-			self.sock.send('NAME: ' + self.name)
+			#client will generate initial private key
+			self.gen_key = Fernet.generate_key()
+			self.fern = Fernet(self.gen_key)
+			print(self.gen_key)
+			#encrypt generated key using public key
+			enc_key = self.encrypt(self.gen_key, self.public_key)
+
+			self.sock.send(enc_key)
+
+			#recv the private symmetric encrypted key
+			enc_data = self.sock.recv(BUFSIZ)
+
+
+			self.sock.send(self.fern.encrypt(('NAME: ' + self.name).encode()))
 			data = self.sock.recv(BUFSIZ)
-			addr = data.split('CLIENT: ')[1] #get client address and set it
+
+			addr = self.fern.decrypt(data).decode().split('CLIENT: ')[1] #get client address and set it
 			self.prompt = '[{}]> '.format(name)
+
 		except socket.error:
 			print( 'Uh oh...something went wrong connecting to chat server')
 			sys.exit(1)
+
+
+	def getPublicKey(self, file = "RSApub.pem"):
+		with open(file, "rb") as keyfile:
+			self.public_key = serialization.load_pem_public_key(keyfile.read(), backend = default_backend())
+
+	def encrypt(self,data, key):
+		encrypted = key.encrypt(data, padding=padding.OAEP(mgf=padding.MGF1(algorithm=hashes.SHA1()),algorithm=hashes.SHA1(),label=None ) )
+		return encrypted
+
+
+	def decrypt(self, ciphertext, key):
+		decrypted_message = key.decrypt(ciphertext, padding.OAEP(mgf=padding.MGF1(algorithm = hashes.SHA1()),algorithm=hashes.SHA1(), label = None))
+		return decrypted_message
 
 	def cmdloop(self):
 
@@ -45,10 +92,14 @@ class ChatClient(object):
 				for i in inputready:
 					if i == 0:
 						data = sys.stdin.readline().strip()
-						if data: self.sock.send(data)
+						#regenerating initialization vector, but self.fern already implements a iv, otherwise would include it
+						self.iv = os.urandom(16)
+						#encrypting data using symm key
+						enc = self.fern.encrypt(data.encode())
+						self.sock.send(enc)
 					elif i == self.sock:
-						data = self.sock.recv(BUFSIZ)
-						if data == 'Shutdown':
+						data = self.fern.decrypt(self.sock.recv(BUFSIZ))
+						if data.decode() == 'Shutdown':
 							print( 'Admin booted you from chat.')
 							self.flag = True
 							break
@@ -57,7 +108,7 @@ class ChatClient(object):
 							self.flag = True
 							break
 						else:
-							sys.stdout.write(data + '\n')
+							sys.stdout.write(data.decode() + '\n')
 							sys.stdout.flush()
 
 			except KeyboardInterrupt:
@@ -85,7 +136,6 @@ def getHostAndPort(argsFromCommandLine):
 		username = argsFromCommandLine[3]
 
 	else:
-
 		username = input("username: ")
 
 		host = input('host: ')
