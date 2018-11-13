@@ -134,7 +134,6 @@ def getHostAndPort(argsFromCommandLine):
 		host = argsFromCommandLine[1]
 		port = int(argsFromCommandLine[2])
 		username = argsFromCommandLine[3]
-
 	else:
 		username = input("username: ")
 
